@@ -59,39 +59,44 @@
         /* ── HUD ─────────────────────────────────────────────── */
         #hud {
             position:absolute; top:0; left:0; width:100%;
-            padding:calc(14px + var(--safe-top)) 14px 0;
-            z-index:10; pointer-events:none;
+            padding:calc(8px + var(--safe-top)) 10px 0;
+            z-index:10; pointer-events:none; box-sizing:border-box;
         }
-        .hud-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+        /* Row 1: [54px gap for ☰] score | info | [68px gap for version] */
+        .hud-top {
+            display:flex; align-items:flex-start; gap:6px;
+            padding-left:54px; padding-right:74px;
+        }
         .hud-panel {
-            background:rgba(255,255,255,0.82); backdrop-filter:blur(12px);
+            background:rgba(255,255,255,0.88); backdrop-filter:blur(12px);
             border:1.5px solid rgba(255,107,53,0.25); border-radius:14px;
-            padding:10px 16px; box-shadow:0 4px 18px rgba(0,0,0,.1);
-            pointer-events:auto;
+            padding:8px 12px; box-shadow:0 4px 18px rgba(0,0,0,.1);
+            pointer-events:auto; flex-shrink:0;
         }
         body.dark-mode .hud-panel { background:rgba(26,31,58,0.85); box-shadow:0 4px 18px rgba(0,0,0,.4); }
-        .score-label { font-size:11px; color:#8892b0; text-transform:uppercase; letter-spacing:2px; margin-bottom:2px; }
-        .score-value { font-family:'Orbitron',monospace; font-size:28px; font-weight:900; color:var(--accent); line-height:1; }
-        .info-panel { display:flex; flex-direction:column; gap:6px; min-width:140px; }
-        .info-row { display:flex; justify-content:space-between; align-items:center; gap:10px; }
-        .info-label { font-size:11px; color:#8892b0; text-transform:uppercase; }
-        .info-value { font-family:'Orbitron',monospace; font-size:15px; font-weight:700; color:var(--primary); }
+        .score-label { font-size:10px; color:#8892b0; text-transform:uppercase; letter-spacing:2px; margin-bottom:2px; }
+        .score-value { font-family:'Orbitron',monospace; font-size:22px; font-weight:900; color:var(--accent); line-height:1; }
+        .info-panel { display:flex; flex-direction:column; gap:5px; flex:1; min-width:0; }
+        .info-row { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+        .info-label { font-size:10px; color:#8892b0; text-transform:uppercase; white-space:nowrap; }
+        .info-value { font-family:'Orbitron',monospace; font-size:13px; font-weight:700; color:var(--primary); }
         .timer-container { height:6px; background:rgba(0,0,0,.12); border-radius:6px; overflow:hidden; margin-top:4px; }
         .timer-bar { height:100%; background:linear-gradient(90deg,var(--success),var(--secondary),var(--danger)); border-radius:6px; transition:width .1s linear; }
 
-        /* ── Next character ───────────────────────────────────── */
+        /* Row 2: Next character — in-flow, centered, with side margins to avoid buttons */
         .next-character {
-            position:absolute; top:calc(14px + var(--safe-top)); left:50%; transform:translateX(-50%);
+            display:flex; align-items:center; gap:8px;
+            width:fit-content; max-width:calc(100% - 130px);
+            margin:6px auto 0 auto;
             background:rgba(255,255,255,0.88); backdrop-filter:blur(12px);
             border:1.5px solid rgba(255,107,53,0.3); border-radius:40px;
-            padding:8px 18px; display:flex; align-items:center; gap:10px;
-            box-shadow:0 4px 18px rgba(0,0,0,.1); white-space:nowrap;
-            pointer-events:none; z-index:10;
+            padding:6px 16px; box-shadow:0 4px 18px rgba(0,0,0,.1); white-space:nowrap;
+            pointer-events:none;
         }
         body.dark-mode .next-character { background:rgba(26,31,58,0.88); }
-        .next-label { font-size:11px; color:#8892b0; text-transform:uppercase; }
-        .next-icon { font-size:26px; line-height:1; }
-        .next-type { font-family:'Orbitron',monospace; font-size:13px; font-weight:700; color:var(--accent); }
+        .next-label { font-size:10px; color:#8892b0; text-transform:uppercase; }
+        .next-icon { font-size:22px; line-height:1; }
+        .next-type { font-family:'Orbitron',monospace; font-size:12px; font-weight:700; color:var(--accent); }
 
         /* ── Version Badge ────────────────────────────────────── */
         #versionBadge {
@@ -417,7 +422,7 @@
 <!-- ═══ HUD ═══════════════════════════════════════════════════ -->
 <div id="hud">
     <div class="hud-top">
-        <div class="hud-panel" style="margin-left:60px">
+        <div class="hud-panel">
             <div class="score-label" data-i18n="hudScore">Score</div>
             <div class="score-value" id="scoreDisplay">0</div>
         </div>
@@ -488,6 +493,10 @@
             <label class="toggle"><input type="checkbox" id="vibrationToggle" checked><span class="toggle-slider"></span></label>
         </div>
         <div class="setting-row">
+            <span class="setting-label" data-i18n="settingsSounds">Sound Effects</span>
+            <label class="toggle"><input type="checkbox" id="soundToggle" checked><span class="toggle-slider"></span></label>
+        </div>
+        <div class="setting-row">
             <span class="setting-label" data-i18n="settingsAnimations">Animations</span>
             <label class="toggle"><input type="checkbox" id="animToggle" checked><span class="toggle-slider"></span></label>
         </div>
@@ -531,7 +540,7 @@
 // ════════════════════════════════════════════════════════════════
 // VERSION
 // ════════════════════════════════════════════════════════════════
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 document.getElementById('versionBadge').textContent = 'v' + APP_VERSION;
 
 const storedVer = localStorage.getItem('tb_version');
@@ -560,7 +569,7 @@ async function hardReset() {
 // ════════════════════════════════════════════════════════════════
 // SETTINGS
 // ════════════════════════════════════════════════════════════════
-const DEFAULT_SETTINGS = { lang:'en', darkMode:false, vibration:true, animations:true, pullToRefresh:false };
+const DEFAULT_SETTINGS = { lang:'en', darkMode:false, vibration:true, sounds:true, animations:true, pullToRefresh:false };
 function loadSettings() { try { return Object.assign({},DEFAULT_SETTINGS,JSON.parse(localStorage.getItem('tb_settings')||'{}')); } catch { return {...DEFAULT_SETTINGS}; } }
 function saveSettings(s) { localStorage.setItem('tb_settings', JSON.stringify(s)); }
 let settings = loadSettings();
@@ -572,6 +581,7 @@ function initSettings() {
     document.getElementById('langSelect').value        = settings.lang;
     document.getElementById('darkModeToggle').checked  = settings.darkMode;
     document.getElementById('vibrationToggle').checked = settings.vibration;
+    document.getElementById('soundToggle').checked     = settings.sounds;
     document.getElementById('animToggle').checked      = settings.animations;
     document.getElementById('ptrToggle').checked       = settings.pullToRefresh;
 }
@@ -583,6 +593,7 @@ document.getElementById('langSelect').addEventListener('change', e => {
 });
 document.getElementById('darkModeToggle').addEventListener('change', e => { settings.darkMode = e.target.checked; saveSettings(settings); applyTheme(); });
 document.getElementById('vibrationToggle').addEventListener('change', e => { settings.vibration = e.target.checked; saveSettings(settings); });
+document.getElementById('soundToggle').addEventListener('change', e => { settings.sounds = e.target.checked; saveSettings(settings); });
 document.getElementById('animToggle').addEventListener('change', e => { settings.animations = e.target.checked; saveSettings(settings); });
 document.getElementById('ptrToggle').addEventListener('change', e => { settings.pullToRefresh = e.target.checked; saveSettings(settings); });
 
@@ -735,6 +746,107 @@ async function checkRemoteVersion() {
 setTimeout(checkRemoteVersion, 5000); setInterval(checkRemoteVersion, 300_000);
 
 // ════════════════════════════════════════════════════════════════
+// LAZY LOADING (Req 8.1)
+// ════════════════════════════════════════════════════════════════
+(function initLazyLoading() {
+    if (!('IntersectionObserver' in window)) return;
+    const obs = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                const el = entry.target;
+                if (el.dataset.lazySrc) { el.src = el.dataset.lazySrc; el.removeAttribute('data-lazy-src'); }
+                if (el.dataset.lazyBg)  { el.style.backgroundImage = `url(${el.dataset.lazyBg})`; el.removeAttribute('data-lazy-bg'); }
+                obs.unobserve(el);
+            }
+        });
+    }, { rootMargin: '100px' });
+    document.querySelectorAll('[data-lazy-src],[data-lazy-bg]').forEach(el => obs.observe(el));
+})();
+
+// ════════════════════════════════════════════════════════════════
+// SOUND SYSTEM (Req 7.3 — sound effects toggle)
+// ════════════════════════════════════════════════════════════════
+const SFX = (() => {
+    const ctx = window.AudioContext ? new AudioContext() : null;
+    function tone(freq, type, dur, vol=0.3) {
+        if (!ctx || !settings.sounds) return;
+        if (ctx.state === 'suspended') ctx.resume();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = type; osc.frequency.value = freq;
+        gain.gain.setValueAtTime(vol, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(); osc.stop(ctx.currentTime + dur);
+    }
+    return {
+        place()    { tone(440, 'sine', 0.12, 0.2); },
+        score()    { tone(660, 'sine', 0.1); setTimeout(()=>tone(880,'sine',0.15),80); },
+        collapse() { tone(220,'sawtooth',0.5,0.4); setTimeout(()=>tone(110,'sawtooth',0.4,0.3),120); },
+        warning()  { tone(330,'square',0.08,0.15); },
+    };
+})();
+
+// ════════════════════════════════════════════════════════════════
+// UI STATE PERSISTENCE (Req 7.4 — scroll position + UI state)
+// ════════════════════════════════════════════════════════════════
+(function initUIStatePersistence() {
+    // Save difficulty selection
+    const savedDiff = localStorage.getItem('tb_ui_difficulty');
+    if (savedDiff) {
+        document.querySelectorAll('.difficulty-btn').forEach(b => {
+            b.classList.toggle('selected', b.dataset.difficulty === savedDiff);
+        });
+    }
+    document.querySelectorAll('.difficulty-btn').forEach(b => {
+        b.addEventListener('click', () => localStorage.setItem('tb_ui_difficulty', b.dataset.difficulty));
+    });
+    // Restore scroll positions on accordions/scroll containers
+    const saveScroll = () => {
+        try { localStorage.setItem('tb_ui_scroll', JSON.stringify({ top: window.scrollY, left: window.scrollX })); } catch {}
+    };
+    const restoreScroll = () => {
+        try {
+            const s = JSON.parse(localStorage.getItem('tb_ui_scroll') || 'null');
+            if (s) window.scrollTo(s.left || 0, s.top || 0);
+        } catch {}
+    };
+    window.addEventListener('beforeunload', saveScroll);
+    restoreScroll();
+})();
+
+// ════════════════════════════════════════════════════════════════
+// WATCHDOG / ERROR RECOVERY (Req 8.2)
+// ════════════════════════════════════════════════════════════════
+(function initWatchdog() {
+    let lastFrameTime = Date.now();
+    let watchdogActive = false;
+
+    function recordFrame() { lastFrameTime = Date.now(); }
+
+    // Expose for Game loop to call
+    window._wdTick = recordFrame;
+
+    setInterval(() => {
+        if (!watchdogActive) return;
+        const stale = Date.now() - lastFrameTime;
+        if (stale > 5000) {
+            console.warn('[Watchdog] Game loop stalled for', stale, 'ms — attempting recovery');
+            try {
+                if (window.game && typeof game._startLoop === 'function') {
+                    game._startLoop();
+                    showToast('Watchdog: game loop recovered', 'info', 2000);
+                }
+            } catch (e) { console.error('[Watchdog] Recovery failed:', e); }
+            lastFrameTime = Date.now();
+        }
+    }, 3000);
+
+    window._watchdogStart = () => { watchdogActive = true; lastFrameTime = Date.now(); };
+    window._watchdogStop  = () => { watchdogActive = false; };
+})();
+
+// ════════════════════════════════════════════════════════════════
 // PHYSICS ENGINE  — clean, verified, single source of truth
 // ════════════════════════════════════════════════════════════════
 // COORDINATE SYSTEM:
@@ -753,7 +865,7 @@ class PhysicsEngine {
         this.COLLAPSE_DEG  = 40;          // game-over tilt angle (degrees)
         this.COLLAPSE_RAD  = this.COLLAPSE_DEG * Math.PI / 180;
         // Semi-implicit Euler params — tuned for feel
-        this.DAMPING       = 0.985;       // angular velocity decay per frame
+        this.DAMPING       = 0.993;       // angular velocity decay per frame (calibrated)
         this.OMEGA_MAX     = 2.0;         // rad/s hard cap
         // Spring-damper for elastic micro-flex (visual only)
         this.K_SPRING      = 5.0;
@@ -808,10 +920,12 @@ class PhysicsEngine {
     // I = I_structure + Σ m_i · r_i²
     // r_i = distance from character to pivot (x dominates rotation)
     _moi(chars) {
-        // Structural MOI: a small constant resistance representing
-        // the empty tower's own stability. Must be SMALL so characters
-        // have real influence. Tuned: 5000 → 1 person at x=30 collapses in ~1.7s
-        const I_struct = 5000;
+        // Structural MOI: calibrated for good gameplay feel.
+        // 1 person at far edge (x=30) → collapses in ~7s  (tense, manageable)
+        // 1 person at inner slot (x=10) → collapses in ~16s (slow lean)
+        // 2 people same side → collapses in ~4-5s
+        // Balanced load → stable indefinitely
+        const I_struct = 35000;
 
         let I = I_struct;
         for (const c of chars) {
@@ -833,7 +947,7 @@ class PhysicsEngine {
     // g_real = 9.8 m/s²  →  g_eff = 9.8 × 20 = 196 px/s²
     // But tower arm is short so we use 150 px/s² for gameplay feel.
     _gravityTorque() {
-        const G = 150;   // px/s²
+        const G = 75;    // px/s² — calibrated: 1 person on edge ≈ 7s to collapse
         return (this.comX - this.pivotX) * this.totalMass * G;
     }
 
@@ -1211,6 +1325,8 @@ class Game {
             this._updateNextChar();
             this._save();
             vibrate(22);
+            SFX.place();
+            if (this.score > 0 && this.score % 50 === 0) SFX.score();
         } else {
             vibrate([40,20,40]);
         }
@@ -1244,7 +1360,7 @@ class Game {
     start(diff) {
         this.diff     = diff;
         this.score    = 0; this.turn = 1; this.tourists = 0; this.maxAngle = 0; this.over = false;
-        this.timer    = 0; this.loop_ts = null;
+        this.timer    = 0; this.loop_ts = null; this._wasDanger = false;
         this.physics.reset();
         this.tower.reset();
         this.tower.baseX = this.canvas.width  / 2;
@@ -1260,14 +1376,21 @@ class Game {
 
         if (!this._running) {
             this._running = true;
-            requestAnimationFrame(ts => this._tick(ts));
+            this._startLoop();
         }
+        if (window._watchdogStart) window._watchdogStart();
+    }
+
+    _startLoop() {
+        this.loop_ts = null;
+        requestAnimationFrame(ts => this._tick(ts));
     }
 
     _tick(ts) {
         if (!this.loop_ts) this.loop_ts = ts;
         const dt = Math.min((ts - this.loop_ts) / 1000, 0.05);
         this.loop_ts = ts;
+        if (window._wdTick) window._wdTick();   // watchdog heartbeat
 
         if (!this.over) {
             const dc = CONFIG.difficulty[this.diff];
@@ -1284,10 +1407,14 @@ class Game {
             if (deg > this.maxAngle) this.maxAngle = deg;
             this._updateStability();
 
-            // Danger tilt visual flash
-            document.body.classList.toggle('danger-tilt', deg > 25);
+            // Danger tilt visual flash + sound warning
+            const wasDanger = this._wasDanger;
+            const isDanger  = deg > 25;
+            document.body.classList.toggle('danger-tilt', isDanger);
+            if (isDanger && !wasDanger) SFX.warning();
+            this._wasDanger = isDanger;
 
-            if (collapsed) { this._gameOver(); }
+            if (collapsed) { SFX.collapse(); this._gameOver(); }
         }
 
         this._draw();
