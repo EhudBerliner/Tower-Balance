@@ -2,7 +2,7 @@
   "name": "Tower Balance - מגדל האיזון",
   "short_name": "Tower Balance",
   "description": "Physics-based tower balancing game",
-  "start_url": "index.html",
+  "start_url": ".",
   "scope": ".",
   "display": "standalone",
   "background_color": "#0a0e27",

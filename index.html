@@ -957,41 +957,251 @@ class GameState {
 }
 
 // ══════════════════════════════════════════════════════════════
-// PHYSICS ENGINE
+// ULTIMATE BALANCED PHYSICS ENGINE
+// Hybrid: Rigid Body + Dynamic Pivot + Static/Dynamic Friction
+//         + Elastic Oscillation + Smart Wind + Stable Integrator
 // ══════════════════════════════════════════════════════════════
 class PhysicsEngine {
-    constructor(config) { this.config = config; this.reset(); }
-    reset() { this.angle = 0; this.angularVelocity = 0; this.angularAcceleration = 0; this.momentOfInertia = 1000; this.windForce = { x: 0, y: 0 }; }
-
-    calculateCenterOfMass(characters) {
-        if (!characters.length) return { x: 0, y: 0, totalMass: 0 };
-        let totalMass = 0, comX = 0, comY = 0;
-        characters.forEach(c => { totalMass += c.mass; comX += c.mass * c.x; comY += c.mass * c.y; });
-        return { x: comX / totalMass, y: comY / totalMass, totalMass };
+    constructor(difficultyConfig) {
+        this.diffConfig = difficultyConfig;
+        // --- Tuned parameters ---
+        this.g            = 9.8;
+        this.damping      = 0.992;
+        this.k_elastic    = 6.0;   // spring stiffness
+        this.c_elastic    = 1.2;   // spring damping
+        this.mu_static    = 0.45;
+        this.mu_dynamic   = 0.30;
+        this.windStrength = 0.15;
+        this.theta_limit  = 0.9;   // rad ≈ 51.5°
+        this.omega_max    = 4.0;
+        // --- Perlin-like wind state ---
+        this._windPhase   = Math.random() * 100;
+        this._windValue   = 0;
+        this.windEnabled  = false;
+        this.reset();
     }
 
-    update(dt, characters) {
-        // Characters are stored in tower-local coordinates (x=0 is pivot).
-        // Torque = r × F where r is horizontal offset from pivot and F = mass × gravity_scale.
-        // gravity_scale is intentionally small so the tower tilts gradually, not instantly.
-        const GRAVITY_SCALE = 0.08; // tuned for gameplay feel
-        const com = this.calculateCenterOfMass(characters);
-        const r = com.x; // already relative to pivot (tower center)
-        const torque = r * com.totalMass * GRAVITY_SCALE + this.windForce.x * 0.5;
-        // Moment of inertia scales with number of characters so heavier towers resist better
-        const I = 500 + characters.length * 120;
-        this.angularAcceleration = torque / I;
-        this.angularVelocity += this.angularAcceleration * dt;
-        this.angularVelocity *= this.config.damping;
-        this.angle += this.angularVelocity * dt;
-        // Clamp to prevent runaway
-        this.angularVelocity = Math.max(-2, Math.min(2, this.angularVelocity));
-        return Math.abs(this.angle) > (this.config.maxAngle * Math.PI) / 180;
+    reset() {
+        this.angle            = 0;
+        this.omega            = 0;   // angular velocity
+        this.alpha            = 0;   // angular acceleration
+        this.pivotX           = 0;
+        this.elasticOffset    = 0;
+        this.elasticVelocity  = 0;
+        this.instability      = 0;
+        this._omegaGrowCount  = 0;
+        this._prevOmega       = 0;
+        this._windValue       = 0;
+        this._windPhase       = Math.random() * 100;
+        this._totalMass       = 0;
+        this._comX            = 0;
+        this._comY            = 0;
     }
 
-    applyWind() { this.windForce.x = (Math.random() - 0.5) * 2; }
-    getAngleDegrees() { return (this.angle * 180) / Math.PI; }
+    // ── 1. Center of Mass ─────────────────────────────────────
+    computeCOM(characters) {
+        if (!characters.length) {
+            this._comX = 0; this._comY = 0; this._totalMass = 0;
+            return;
+        }
+        let M = 0, cx = 0, cy = 0;
+        for (const c of characters) { M += c.mass; cx += c.mass * c.x; cy += c.mass * c.y; }
+        this._totalMass = M;
+        this._comX = cx / M;
+        this._comY = cy / M;
+    }
+
+    // ── 2. Dynamic Pivot (Contact Patch) ─────────────────────
+    updateDynamicPivot(baseWidth) {
+        const half = baseWidth / 2;
+        if (Math.abs(this._comX) <= half) {
+            this.pivotX = 0;
+        } else {
+            this.pivotX = Math.sign(this._comX) * half;
+        }
+    }
+
+    // ── 3. Moment of Inertia (Parallel Axis Theorem) ─────────
+    computeMOI(characters, baseWidth) {
+        // Base MOI from distribution of masses around pivot
+        let I = 200; // structural base
+        for (const c of characters) {
+            const dx = c.x - this.pivotX;
+            const dy = c.y;
+            I += c.mass * (dx * dx + dy * dy * 0.1);
+        }
+        // Parallel axis: shift from center to dynamic pivot
+        I += this._totalMass * this.pivotX * this.pivotX;
+        return Math.max(I, 300);
+    }
+
+    // ── 4. Gravity Torque ─────────────────────────────────────
+    gravityTorque() {
+        if (this._totalMass === 0) return 0;
+        // Scale g so gameplay feels right at pixel scale
+        const G_SCALE = 0.012;
+        return (this._comX - this.pivotX) * this._totalMass * this.g * G_SCALE;
+    }
+
+    // ── 5. Wind (smooth Perlin-like noise) ───────────────────
+    updateWind(dt) {
+        if (!this.windEnabled) { this._windValue = 0; return; }
+        this._windPhase += dt * 0.4;
+        // Multi-octave smooth noise approximation
+        const n = Math.sin(this._windPhase) * 0.6
+                + Math.sin(this._windPhase * 2.3 + 1.2) * 0.3
+                + Math.sin(this._windPhase * 0.7 + 3.1) * 0.1;
+        this._windValue = n * this.windStrength;
+    }
+
+    windTorque(characters) {
+        if (!this.windEnabled || this._totalMass === 0) return 0;
+        // heightFactor: wind affects more the higher the COM
+        const heightFactor = Math.max(0, -this._comY / 400);
+        return this._windValue * heightFactor * this._totalMass;
+    }
+
+    // ── 6. Elastic Oscillation Layer ──────────────────────────
+    elasticTorque() {
+        return -this.k_elastic * this.elasticOffset - this.c_elastic * this.elasticVelocity;
+    }
+
+    updateElastic(dt) {
+        const tau = this.elasticTorque();
+        this.elasticVelocity += tau * dt;
+        this.elasticOffset   += this.elasticVelocity * dt;
+        // Dampen elastic over time
+        this.elasticVelocity *= 0.98;
+        this.elasticOffset   *= 0.995;
+    }
+
+    // ── 7. Impact Impulse ──────────────────────────────────────
+    applyImpact(character, dropHeight, I_total) {
+        if (I_total <= 0) return;
+        const v  = Math.sqrt(2 * this.g * Math.max(dropHeight, 10) * 0.001);
+        const J  = character.mass * v;
+        const r  = character.x - this.pivotX;
+        const deltaOmega = (r * J) / I_total;
+        this.omega += deltaOmega * 0.15; // scale for gameplay
+        // Inject elastic kick
+        this.elasticVelocity += deltaOmega * 0.4;
+    }
+
+    // ── 8. Instability Index ──────────────────────────────────
+    updateInstability(baseWidth) {
+        const theta = Math.abs(this.angle);
+        const omega = Math.abs(this.omega);
+        const comRatio = Math.abs(this._comX) / (baseWidth / 2 + 0.001);
+        this.instability = theta * omega * comRatio;
+
+        const chaos = this.instability > 0.8;
+        if (chaos) {
+            // "losing control" feel: reduce resistance slightly
+            this.damping      = 0.985;
+            this.mu_static    = 0.35;
+            this.k_elastic    = 4.0;
+        } else {
+            this.damping      = 0.992;
+            this.mu_static    = 0.45;
+            this.k_elastic    = 6.0;
+        }
+    }
+
+    // ── 9. Sliding Resolution ────────────────────────────────
+    resolveSliding(characters, dt) {
+        const theta = this.angle;
+        const sinT  = Math.sin(Math.abs(theta));
+        const cosT  = Math.cos(Math.abs(theta));
+        const dir   = Math.sign(theta) || 1;
+
+        for (const c of characters) {
+            // Static friction test
+            if (sinT > this.mu_static * cosT) {
+                c.isSliding = true;
+                const a_slide = this.g * (sinT - this.mu_dynamic * cosT) * 0.005;
+                c.velocity.x += dir * a_slide * dt * 60;
+            } else {
+                // Regain grip
+                c.isSliding = false;
+                c.velocity.x *= 0.85;
+            }
+            if (c.isSliding) {
+                c.x += c.velocity.x * dt;
+                c.velocity.x *= 0.96;
+            }
+        }
+    }
+
+    // ── 10. Collapse Conditions ──────────────────────────────
+    checkCollapse(baseWidth) {
+        const margin = 5;
+        // 1. COM past base
+        if (Math.abs(this._comX) > baseWidth / 2 + margin && this._totalMass > 0) return true;
+        // 2. Angle limit
+        if (Math.abs(this.angle) >= this.theta_limit) return true;
+        // 3. Chaos threshold
+        if (this.instability > 3.0) return true;
+        // 4. Pivot at edge and omega growing 3 frames
+        if (this.pivotX !== 0) {
+            if (Math.abs(this.omega) > Math.abs(this._prevOmega)) {
+                this._omegaGrowCount++;
+            } else {
+                this._omegaGrowCount = 0;
+            }
+            if (this._omegaGrowCount >= 3 && Math.abs(this.omega) > 0.3) return true;
+        } else {
+            this._omegaGrowCount = 0;
+        }
+        return false;
+    }
+
+    // ── 11. Full Physics Step ─────────────────────────────────
+    step(dt, characters, baseWidth) {
+        // Compute state
+        this.computeCOM(characters);
+        this.updateDynamicPivot(baseWidth);
+        const I = this.computeMOI(characters, baseWidth);
+
+        // Torques
+        this.updateWind(dt);
+        const tau = this.gravityTorque()
+                  + this.windTorque(characters)
+                  + this.elasticTorque();
+
+        // Semi-Implicit Euler integration
+        this.alpha  = tau / I;
+        this.omega += this.alpha * dt;
+        this.omega *= this.damping;
+        this.omega  = Math.max(-this.omega_max, Math.min(this.omega_max, this.omega));
+        this.angle += this.omega * dt;
+        this.angle  = Math.max(-this.theta_limit, Math.min(this.theta_limit, this.angle));
+
+        // Sub-systems
+        this.resolveSliding(characters, dt);
+        this.updateElastic(dt);
+        this.updateInstability(baseWidth);
+
+        // Track omega growth for collapse condition 4
+        this._prevOmega = this.omega;
+
+        return this.checkCollapse(baseWidth);
+    }
+
+    // Visual angle includes elastic micro-flex
+    get visualAngle() {
+        return this.angle + this.elasticOffset * 0.05;
+    }
+
+    getAngleDegrees() {
+        return (this.angle * 180) / Math.PI;
+    }
+
+    applyWind_instant() {
+        // Legacy-compatible: instant wind burst (used by difficulty wind interval)
+        this._windValue = (Math.random() - 0.5) * this.windStrength * 4;
+    }
 }
+
 
 // ══════════════════════════════════════════════════════════════
 // CHARACTER CLASS
@@ -1110,6 +1320,7 @@ class Game {
         if (this.state.gameOver || this.dragCharacter) return;
         const r = this.canvas.getBoundingClientRect();
         this.dragCharacter = new Character(this.nextCharType, e.clientX - r.left, e.clientY - r.top, -1);
+        this.dragCharacter._dropY = e.clientY - r.top;
         vibrate(10);
     }
 
@@ -1129,6 +1340,10 @@ class Game {
             this.dragCharacter.y = this.tower.floors[fi].y;
             this.dragCharacter.floor = fi;
             this.tower.addCharacter(this.dragCharacter, fi);
+            // Apply impact impulse
+            const dropH = Math.max(0, this.dragCharacter._dropY - (this.tower.floors[fi].y + this.tower.baseY));
+            const I_now = this.physics.computeMOI(this.tower.getAllCharacters(), CONFIG.tower.baseWidth);
+            this.physics.applyImpact(this.dragCharacter, dropH, I_now);
             this.state.tourists++; this.state.score += Math.floor(this.dragCharacter.mass * 10); this.state.turn++;
             this.timer = 0;
             this.nextCharType = this.randomCharType();
@@ -1183,13 +1398,13 @@ class Game {
             if (this.timer >= dc.timerDuration) { this.forceSpawn(); this.timer = 0; }
             this.updateTimerDisplay();
         }
-        if (dc.wind) { this.windTimer += dt; if (this.windTimer >= dc.windInterval) { this.physics.applyWind(); this.windTimer = 0; } }
+        if (dc.wind) { this.windTimer += dt; if (this.windTimer >= dc.windInterval) { this.physics.applyWind_instant(); this.windTimer = 0; } }
 
         const chars = this.tower.getAllCharacters();
-        if (this.physics.update(dt, chars)) { this.gameOver(); return; }
+        if (this.physics.step(dt, chars, CONFIG.tower.baseWidth)) { this.gameOver(); return; }
         const ang = Math.abs(this.physics.getAngleDegrees());
         if (ang > this.state.maxAngle) this.state.maxAngle = ang;
-        chars.forEach(c => { c.checkSliding(this.physics.angle); c.update(dt); });
+        // sliding resolved inside physics.step
         this.updateStabilityDisplay();
     }
 
@@ -1213,10 +1428,10 @@ class Game {
             this.ctx.scale(0.8, 0.4);
             this.ctx.translate(-this.canvas.width / 2, -this.canvas.height / 2);
         }
-        this.tower.draw(this.ctx, this.physics.angle);
+        this.tower.draw(this.ctx, this.physics.visualAngle);
         this.ctx.save();
         this.ctx.translate(this.tower.baseX, this.tower.baseY);
-        this.ctx.rotate(this.physics.angle);
+        this.ctx.rotate(this.physics.visualAngle);
         this.tower.getAllCharacters().forEach(c => c.draw(this.ctx));
         this.ctx.restore();
 
@@ -1249,8 +1464,14 @@ class Game {
         document.getElementById('timerBar').style.width = p + '%';
     }
     updateStabilityDisplay() {
-        const p = ((this.physics.getAngleDegrees() / CONFIG.physics.maxAngle) * 50) + 50;
-        document.getElementById('stabilityBar').style.marginLeft = p + '%';
+        // Map angle to stability bar position (0=far left, 100=far right, 50=center)
+        const maxRad = this.physics.theta_limit;
+        const p = ((this.physics.angle / maxRad) * 50) + 50;
+        document.getElementById('stabilityBar').style.marginLeft = Math.max(0,Math.min(100,p)) + '%';
+        // Color the bar based on instability
+        const inst = Math.min(1, this.physics.instability / 0.8);
+        const marker = document.querySelector('.stability-marker');
+        if(marker) marker.style.background = inst > 0.6 ? 'var(--danger)' : inst > 0.3 ? 'var(--secondary)' : 'white';
     }
 
     // ── Auto-save / load ──────────────────────────────────────
@@ -1285,6 +1506,7 @@ class Game {
         this.updateNextCharDisplay(); this.updateHUD();
         const dc = CONFIG.difficulty[this.state.difficulty];
         document.getElementById('timerContainer').style.display = dc.timer ? 'block' : 'none';
+        this.physics.windEnabled = !!dc.wind;
     }
 
     loop(timestamp) {
