@@ -1,36 +1,26 @@
 {
-  "name": "מגדל האיזון - Tower Balance",
-  "short_name": "Balance Tower",
+  "name": "Tower Balance - מגדל האיזון",
+  "short_name": "Tower Balance",
   "description": "משחק איזון פיזיקלי מתקדם - נהל מרכז מסה ואזן את המגדל",
-  "start_url": "/balance-tower-game.html",
+  "start_url": "./balance-tower-game.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0a0e27",
   "theme_color": "#ff6b35",
   "orientation": "portrait",
-  "icons": [
-    {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23ff6b35' width='192' height='192'/><rect fill='%23f7931e' x='40' y='120' width='112' height='60'/><text x='96' y='90' font-size='80' text-anchor='middle' fill='white'>🏗️</text></svg>",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect fill='%23ff6b35' width='512' height='512'/><rect fill='%23f7931e' x='100' y='320' width='312' height='160'/><text x='256' y='240' font-size='200' text-anchor='middle' fill='white'>🏗️</text></svg>",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    }
-  ],
+  "lang": "en",
+  "dir": "ltr",
   "categories": ["games", "entertainment"],
-  "screenshots": [
-    {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 540 720'><rect fill='%230a0e27' width='540' height='720'/><text x='270' y='360' font-size='100' text-anchor='middle' fill='%23ff6b35'>🏗️</text><text x='270' y='400' font-size='30' text-anchor='middle' fill='white'>Tower Balance Game</text></svg>",
-      "sizes": "540x720",
-      "type": "image/svg+xml",
-      "form_factor": "narrow"
-    }
+  "icons": [
+    { "src": "icons/icon-72x72.png",   "sizes": "72x72",   "type": "image/png" },
+    { "src": "icons/icon-96x96.png",   "sizes": "96x96",   "type": "image/png" },
+    { "src": "icons/icon-128x128.png", "sizes": "128x128", "type": "image/png" },
+    { "src": "icons/icon-144x144.png", "sizes": "144x144", "type": "image/png" },
+    { "src": "icons/icon-152x152.png", "sizes": "152x152", "type": "image/png" },
+    { "src": "icons/icon-192x192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icons/icon-256x256.png", "sizes": "256x256", "type": "image/png" },
+    { "src": "icons/icon-384x384.png", "sizes": "384x384", "type": "image/png" },
+    { "src": "icons/icon-512x512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ],
-  "prefer_related_applications": false,
-  "lang": "he",
-  "dir": "rtl"
+  "prefer_related_applications": false
 }

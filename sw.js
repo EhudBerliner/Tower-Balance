@@ -1,159 +1,82 @@
-// Tower Balance Game - Service Worker
-// Version 1.0.0
+// Tower Balance - Service Worker
+// Version managed via version.json
 
-const CACHE_NAME = 'tower-balance-v1';
-const urlsToCache = [
-  '/balance-tower-game.html',
-  '/manifest.json',
+const APP_VERSION = '1.0.0';
+const CACHE_NAME  = `tower-balance-${APP_VERSION}`;
+
+const CORE_ASSETS = [
+  './balance-tower-game.html',
+  './manifest.json',
+  './i18n.js',
+  './version.json',
+  './icons/icon-192x192.png',
+  './icons/icon-512x512.png',
 ];
 
-// Install event - cache resources
+// ─── Install ─────────────────────────────────────────────────────────────────
 self.addEventListener('install', event => {
-  console.log('[SW] Installing service worker...');
-  
+  console.log('[SW] Installing', APP_VERSION);
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then(cache => {
-        console.log('[SW] Caching app shell');
-        return cache.addAll(urlsToCache);
-      })
+      .then(cache => cache.addAll(CORE_ASSETS))
       .then(() => self.skipWaiting())
   );
 });
 
-// Activate event - clean up old caches
+// ─── Activate ────────────────────────────────────────────────────────────────
 self.addEventListener('activate', event => {
-  console.log('[SW] Activating service worker...');
-  
+  console.log('[SW] Activating', APP_VERSION);
   event.waitUntil(
-    caches.keys()
-      .then(cacheNames => {
-        return Promise.all(
-          cacheNames.map(cacheName => {
-            if (cacheName !== CACHE_NAME) {
-              console.log('[SW] Deleting old cache:', cacheName);
-              return caches.delete(cacheName);
-            }
-          })
-        );
-      })
-      .then(() => self.clients.claim())
+    caches.keys().then(keys =>
+      Promise.all(keys
+        .filter(k => k !== CACHE_NAME)
+        .map(k => { console.log('[SW] Deleting old cache:', k); return caches.delete(k); })
+      )
+    ).then(() => self.clients.claim())
   );
 });
 
-// Fetch event - serve from cache, fallback to network
+// ─── Fetch (Cache-first, network fallback) ────────────────────────────────────
 self.addEventListener('fetch', event => {
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') {
-    return;
-  }
+  if (event.request.method !== 'GET') return;
+  if (!event.request.url.startsWith('http'))  return;
 
-  // Skip chrome extensions and other non-http(s) requests
-  if (!event.request.url.startsWith('http')) {
+  // version.json: always network-first so we catch updates
+  if (event.request.url.includes('version.json')) {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
     return;
   }
 
   event.respondWith(
-    caches.match(event.request)
-      .then(response => {
-        // Cache hit - return cached response
-        if (response) {
-          console.log('[SW] Serving from cache:', event.request.url);
-          return response;
+    caches.match(event.request).then(cached => {
+      if (cached) return cached;
+      return fetch(event.request.clone()).then(response => {
+        if (response && response.status === 200 && response.type === 'basic') {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
         }
-
-        // Clone the request
-        const fetchRequest = event.request.clone();
-
-        return fetch(fetchRequest).then(response => {
-          // Check if valid response
-          if (!response || response.status !== 200 || response.type !== 'basic') {
-            return response;
-          }
-
-          // Clone the response
-          const responseToCache = response.clone();
-
-          // Cache the fetched response for future use
-          caches.open(CACHE_NAME)
-            .then(cache => {
-              cache.put(event.request, responseToCache);
-            });
-
-          return response;
-        }).catch(error => {
-          console.log('[SW] Fetch failed:', error);
-          
-          // Return a custom offline page if available
-          return caches.match('/balance-tower-game.html');
-        });
-      })
+        return response;
+      }).catch(() => caches.match('./balance-tower-game.html'));
+    })
   );
 });
 
-// Background sync for saving game data
-self.addEventListener('sync', event => {
-  console.log('[SW] Background sync:', event.tag);
-  
-  if (event.tag === 'sync-game-data') {
-    event.waitUntil(syncGameData());
-  }
-});
-
-// Function to sync game data
-async function syncGameData() {
-  // This would sync game data with a server if needed
-  // For now, we just log the sync event
-  console.log('[SW] Syncing game data...');
-  return Promise.resolve();
-}
-
-// Push notification handler (for future features)
-self.addEventListener('push', event => {
-  console.log('[SW] Push notification received');
-  
-  const options = {
-    body: event.data ? event.data.text() : 'New notification',
-    icon: '/icon-192.png',
-    badge: '/badge-72.png',
-    vibrate: [200, 100, 200],
-    data: {
-      dateOfArrival: Date.now(),
-      primaryKey: 1
-    }
-  };
-
-  event.waitUntil(
-    self.registration.showNotification('Tower Balance', options)
-  );
-});
-
-// Notification click handler
-self.addEventListener('notificationclick', event => {
-  console.log('[SW] Notification clicked');
-  
-  event.notification.close();
-  
-  event.waitUntil(
-    clients.openWindow('/balance-tower-game.html')
-  );
-});
-
-// Message handler for communication with the main app
+// ─── Periodic update check message ───────────────────────────────────────────
 self.addEventListener('message', event => {
-  console.log('[SW] Message received:', event.data);
-  
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  if (!event.data) return;
+
+  if (event.data.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
-  
-  if (event.data && event.data.type === 'CACHE_URLS') {
-    event.waitUntil(
-      caches.open(CACHE_NAME).then(cache => {
-        return cache.addAll(event.data.urls);
-      })
-    );
+
+  if (event.data.type === 'CHECK_UPDATE') {
+    // Notify all clients so the main app can compare versions
+    self.clients.matchAll().then(clients => {
+      clients.forEach(client => client.postMessage({ type: 'SW_VERSION', version: APP_VERSION }));
+    });
   }
 });
 
-console.log('[SW] Service Worker loaded');
+console.log('[SW] Service Worker loaded – version', APP_VERSION);
