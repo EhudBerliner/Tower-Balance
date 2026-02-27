@@ -354,12 +354,99 @@
         }
         body.danger-tilt { animation: dangerPulse .6s ease-in-out infinite; }
 
+        /* ── PWA Install Banner ───────────────────────────────── */
+        #installBanner {
+            position: fixed;
+            bottom: -200px;
+            left: 0;
+            right: 0;
+            background: rgba(26, 31, 58, 0.95);
+            backdrop-filter: blur(20px);
+            padding: 16px 20px;
+            border-top: 2px solid var(--primary);
+            box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.5);
+            transition: bottom 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 10000;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+        }
+        #installBanner.show {
+            bottom: 0;
+        }
+        .install-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            flex: 1;
+            min-width: 0;
+        }
+        .install-content img {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            flex-shrink: 0;
+        }
+        .install-content div {
+            flex: 1;
+            min-width: 0;
+        }
+        .install-content strong {
+            display: block;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 2px;
+        }
+        .install-content p {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin: 0;
+        }
+        .install-actions {
+            display: flex;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .install-actions button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            font-family: 'Rajdhani', sans-serif;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            white-space: nowrap;
+        }
+        #installBtn {
+            background: linear-gradient(135deg, var(--primary), var(--secondary));
+            color: white;
+        }
+        #installBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 107, 53, 0.4);
+        }
+        #installDismissBtn {
+            background: transparent;
+            color: var(--text-dim);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        #installDismissBtn:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
         /* ── Responsive ───────────────────────────────────────── */
         @media(max-width:480px) {
             .game-title { font-size:28px; }
             .score-value { font-size:22px; }
             .controls { bottom:calc(56px + var(--safe-bottom)); right:8px; }
             .control-btn { width:46px; height:46px; font-size:18px; }
+            #installBanner { padding: 12px 16px; }
+            .install-content img { width: 40px; height: 40px; }
+            .install-actions { flex-direction: column; gap: 6px; }
+            .install-actions button { padding: 6px 12px; font-size: 12px; }
         }
     </style>
 </head>
@@ -464,13 +551,17 @@
 
 <!-- ═══ PWA Install Banner ════════════════════════════════════ -->
 <div id="installBanner">
-    <img src="icons/icon-192x192.png" alt="Icon">
-    <div class="install-text">
-        <div class="install-title" data-i18n="installTitle">Install App</div>
-        <div class="install-desc"  data-i18n="installDesc">Install for quick access and offline play!</div>
+    <div class="install-content">
+        <img src="./logo.png" alt="Tower Balance" onerror="this.src='./icons/icon-192x192.png'">
+        <div>
+            <strong data-i18n="installTitle">Install Tower Balance</strong>
+            <p data-i18n="installDesc">For quick access and offline play!</p>
+        </div>
     </div>
-    <button id="installBtn" data-i18n="installBtn">Install</button>
-    <button id="installDismissBtn" aria-label="Dismiss">✕</button>
+    <div class="install-actions">
+        <button id="installBtn" data-i18n="installBtn">Install</button>
+        <button id="installDismissBtn" data-i18n="installDismiss">Not now</button>
+    </div>
 </div>
 
 <!-- ═══ Settings Modal ════════════════════════════════════════ -->
@@ -1107,17 +1198,27 @@ class Tower {
     reset() { this.floors.forEach(f => f.chars = []); }
 
     // Place character's x,y in tower-local space
-    // x: spread evenly within baseWidth, y: floor surface y
-    addChar(char, floorIdx) {
+    // x: use actual drag position, y: floor surface y
+    addChar(char, floorIdx, worldX) {
         if (floorIdx < 0 || floorIdx >= this.floors.length) return false;
         const fl = this.floors[floorIdx];
         if (fl.chars.length >= CONFIG.tower.maxPerFloor) fl.chars.shift();
-        // x position: spread characters evenly across floor width
-        const slot  = fl.chars.length;              // 0..3
-        const slots = CONFIG.tower.maxPerFloor;
-        const step  = CONFIG.tower.baseWidth / slots;
-        char.x = -CONFIG.tower.baseWidth/2 + step*(slot+0.5);
-        char.y = fl.y;                               // tower-local y = floor surface
+        
+        // Use actual drag position (world coordinates) converted to tower-local
+        if (worldX !== undefined) {
+            char.x = worldX - this.baseX;
+            // Clamp within tower bounds
+            const maxX = CONFIG.tower.baseWidth / 2 - 15;
+            char.x = Math.max(-maxX, Math.min(maxX, char.x));
+        } else {
+            // Fallback: spread evenly if no position provided
+            const slot  = fl.chars.length;
+            const slots = CONFIG.tower.maxPerFloor;
+            const step  = CONFIG.tower.baseWidth / slots;
+            char.x = -CONFIG.tower.baseWidth/2 + step*(slot+0.5);
+        }
+        
+        char.y = fl.y;  // tower-local y = floor surface
         char.vx = 0;
         fl.chars.push(char);
         return true;
@@ -1309,7 +1410,8 @@ class Game {
 
         if (fi >= 0) {
             const dropPx = Math.max(0, (this.drag._startY||my) - this.tower.floorWorldY(fi));
-            this.tower.addChar(this.drag, fi);
+            // Pass the actual X position to addChar
+            this.tower.addChar(this.drag, fi, mx);
             // Recompute I with all characters now including the new one
             const allC = this.tower.allChars();
             this.physics._com(allC);
@@ -1625,6 +1727,210 @@ document.querySelectorAll('.difficulty-btn').forEach(btn => {
 function updateNextCharDisplay() { if (game) game.updateNextCharDisplay(); }
 
 initSettings();
+
+// ════════════════════════════════════════════════════════════════
+// VERSION MANAGER - Load version from version.json
+// ════════════════════════════════════════════════════════════════
+let APP_VERSION = '1.1.0'; // Fallback
+
+fetch('./version.json?t=' + Date.now())
+    .then(r => r.json())
+    .then(data => {
+        APP_VERSION = data.version;
+        console.log('[Version] Loaded:', APP_VERSION);
+        document.querySelectorAll('[data-app-version]').forEach(el => {
+            el.textContent = 'v' + APP_VERSION;
+        });
+    })
+    .catch(e => console.warn('[Version] Failed to load version.json:', e));
+
+// ════════════════════════════════════════════════════════════════
+// PWA INSTALLATION SYSTEM
+// ════════════════════════════════════════════════════════════════
+(function initPWAInstall() {
+    let deferredPrompt = null;
+    const installBanner = document.getElementById('installBanner');
+    const installBtn = document.getElementById('installBtn');
+    const installDismissBtn = document.getElementById('installDismissBtn');
+    
+    // Check if already installed
+    function isInstalled() {
+        const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+        const isNavigatorStandalone = window.navigator.standalone === true;
+        return isStandalone || isNavigatorStandalone;
+    }
+    
+    // Capture beforeinstallprompt
+    window.addEventListener('beforeinstallprompt', (e) => {
+        console.log('[PWA] beforeinstallprompt captured');
+        e.preventDefault();
+        
+        if (localStorage.getItem('tb_install_dismissed')) {
+            console.log('[PWA] Install previously dismissed');
+            return;
+        }
+        
+        if (isInstalled()) {
+            console.log('[PWA] App already installed');
+            return;
+        }
+        
+        deferredPrompt = e;
+        setTimeout(() => {
+            if (installBanner) installBanner.classList.add('show');
+        }, 3000);
+    });
+    
+    // Install button click
+    if (installBtn) {
+        installBtn.addEventListener('click', async () => {
+            if (!deferredPrompt) return;
+            
+            deferredPrompt.prompt();
+            const { outcome } = await deferredPrompt.userChoice;
+            console.log('[PWA] User response:', outcome);
+            
+            if (outcome === 'accepted') {
+                showToast(t('toastInstalled'), 'success', 3000);
+            } else {
+                localStorage.setItem('tb_install_dismissed', '1');
+            }
+            
+            deferredPrompt = null;
+            if (installBanner) installBanner.classList.remove('show');
+        });
+    }
+    
+    // Dismiss button click
+    if (installDismissBtn) {
+        installDismissBtn.addEventListener('click', () => {
+            if (installBanner) installBanner.classList.remove('show');
+            localStorage.setItem('tb_install_dismissed', '1');
+        });
+    }
+    
+    // App installed event
+    window.addEventListener('appinstalled', () => {
+        console.log('[PWA] App installed successfully');
+        if (installBanner) installBanner.classList.remove('show');
+        showToast(t('toastInstalled'), 'success', 3000);
+    });
+    
+    if (isInstalled()) {
+        console.log('[PWA] App running in standalone mode');
+    }
+})();
+
+// ════════════════════════════════════════════════════════════════
+// APP RESET SYSTEM
+// ════════════════════════════════════════════════════════════════
+(function initAppReset() {
+    let versionClickCount = 0;
+    let versionClickTimer = null;
+    
+    // Hard Reset - 5 clicks on version number
+    const versionElement = document.getElementById('appVersion');
+    if (versionElement) {
+        versionElement.style.cursor = 'pointer';
+        versionElement.addEventListener('click', () => {
+            versionClickCount++;
+            
+            if (versionClickTimer) clearTimeout(versionClickTimer);
+            
+            versionClickTimer = setTimeout(() => {
+                versionClickCount = 0;
+            }, 2000);
+            
+            if (versionClickCount >= 5) {
+                versionClickCount = 0;
+                performHardReset();
+            }
+        });
+    }
+    
+    async function performHardReset() {
+        const confirmed = confirm(
+            '⚠️ איפוס מלא של האפליקציה\n\n' +
+            'פעולה זו תמחק:\n' +
+            '• כל הנתונים השמורים\n' +
+            '• היסטוריית משחקים\n' +
+            '• הגדרות אישיות\n' +
+            '• Service Workers\n' +
+            '• Cache\n\n' +
+            'האם להמשיך?'
+        );
+        
+        if (!confirmed) return;
+        
+        try {
+            showToast('מאפס את האפליקציה...', 'info', 30000);
+            
+            // Clear localStorage & sessionStorage
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            // Clear cookies
+            document.cookie.split(';').forEach(c => {
+                const name = c.split('=')[0].trim();
+                document.cookie = name + '=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/';
+            });
+            
+            // Unregister Service Workers
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                await Promise.all(registrations.map(reg => reg.unregister()));
+            }
+            
+            // Clear caches
+            if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                await Promise.all(cacheNames.map(name => caches.delete(name)));
+            }
+            
+            // Clear IndexedDB
+            if ('indexedDB' in window) {
+                const databases = await indexedDB.databases();
+                await Promise.all(databases.map(db => {
+                    return new Promise((resolve) => {
+                        const request = indexedDB.deleteDatabase(db.name);
+                        request.onsuccess = () => resolve();
+                        request.onerror = () => resolve();
+                        request.onblocked = () => resolve();
+                    });
+                }));
+            }
+            
+            console.log('[Reset] Hard reset completed');
+            setTimeout(() => location.reload(true), 500);
+            
+        } catch (error) {
+            console.error('[Reset] Error:', error);
+            alert('שגיאה באיפוס. אנא נסה שוב.');
+        }
+    }
+})();
+</script>
+
+<!-- Version Display -->
+<div id="appVersion" data-app-version style="
+    position: fixed;
+    bottom: 8px;
+    right: 8px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+    font-family: 'Orbitron', monospace;
+    cursor: pointer;
+    z-index: 1000;
+    transition: all 0.3s ease;
+    pointer-events: auto;
+">v1.1.0</div>
+
+<style>
+#appVersion:hover {
+    color: rgba(255,255,255,0.8);
+    transform: scale(1.1);
+}
+</style>
 </script>
 </body>
 </html>
