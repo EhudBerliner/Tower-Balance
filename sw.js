@@ -5,7 +5,7 @@ const APP_VERSION = '1.0.0';
 const CACHE_NAME  = `tower-balance-${APP_VERSION}`;
 
 const CORE_ASSETS = [
-  './balance-tower-game.html',
+  './index.html',
   './manifest.json',
   './i18n.js',
   './version.json',
@@ -58,7 +58,7 @@ self.addEventListener('fetch', event => {
           caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
         }
         return response;
-      }).catch(() => caches.match('./balance-tower-game.html'));
+      }).catch(() => caches.match('./index.html'));
     })
   );
 });
